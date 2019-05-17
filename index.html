@@ -21,8 +21,13 @@
     <script src="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.js"></script>
   </head>
   <body class="mixpanel-platform-body">
-    <div>Api Secret:</div><div><input id='api-secret' size='35' value='No need to change if already in project'></div>
-    <div>Number of Days:</div><div><input id='num-days' value='7' size='10'></div>
+    <!--<div>Api Secret:</div>-->
+    <div><input id='api-secret' size='35' value='No need to change if already in project' type='hidden'></div>
+    <div>Filename:</div><div><input id='file-name' size='22' value='spec'></div>
+    <div>Number of Days:</div><div><input id='num-days' value='1' size='10'></div>
+    <div>Include Defaults?</div><div><input type='checkBox' id='defaults'></div>
+    <div>Include Events?</div><div><input type='checkBox' id='events' checked></div>
+    <div>Include People?</div><div><input type='checkBox' id='people' checked></div>
     <div><button onclick='display()'>Display Spec</button><button onclick='download()'>Download CSV</button></div>
     <div id='display'></div>
     <script>
@@ -48,17 +53,26 @@
 
     function displaySpec(numDays) {
       var script = $('#jql-query').html();
-      MP.api.jql(script, {numDays: numDays}).done(function(res) {
-        var resStr = res.join('')
-        if (resStr) {
+      var includeDefaults = document.getElementById('defaults').checked;
+      var events = document.getElementById('events').checked;
+      var people = document.getElementById('people').checked;
+      var collections;
+      if (events && people)
+        collections = 'both';
+      else if (events)
+        collections = 'events';
+      else if (people)
+        collections = 'people';
+      MP.api.jql(script, {numDays: numDays, includeDefaults: includeDefaults, collections: collections}).done(function(res) {
+        if (res[0]) {
+          res = res[0];
           var table = '<table><tr><th>Event</th><th>Property</th><th>Count</th><th>Percentage</th></tr><tr><td>';
-          for (var i = 0; i < resStr.length; i++) {
-            if (resStr[i] == ',')
-              table += '</td><td>';
-            else if (resStr[i] == '~')
-              table += '</td></tr><tr><td>'
-            else
-              table += resStr[i];
+          for (var i = 0; i < res.length; i++) {
+          	for (var j = 0; j < res[i].length; j++)
+	          	if (res[i][j].type == 'Event')
+	          		table += res[i][j].label + '</td><td></td><td>' + res[i][j].total + '</td><td>' + res[i][j].ratio + '</td></tr><tr><td>';
+	          	else if (res[i][j].type == 'Property')
+	          		table += '</td><td>' + res[i][j].label + '</td><td>' + res[i][j].total + '</td><td>' + res[i][j].ratio + '</td></tr><tr><td>';
           }
           table += '</td></tr></table>';
           document.getElementById('display').innerHTML = table;
@@ -70,15 +84,42 @@
 
     function downloadCSV(numDays) {
       var script = $('#jql-query').html();
-      MP.api.jql(script, {numDays: numDays}).done(function(res) {
-        var resStr = res.join('')
-        if (resStr) {
+      var includeDefaults = document.getElementById('defaults').checked;
+      var events = document.getElementById('events').checked;
+      var people = document.getElementById('people').checked;
+      var collections;
+      if (events && people)
+        collections = 'both';
+      else if (events)
+        collections = 'events';
+      else if (people)
+        collections = 'people';
+      MP.api.jql(script, {numDays: numDays, includeDefaults: includeDefaults, collections: collections}).done(function(res) {
+        if (res[0]) {
+          res = res[0];
           var csvData = 'Event,Property,Count,Percentage\n';
-          for (var i = 0; i < resStr.length; i++)
-            csvData = resStr[i] == '~'? csvData + '\n': csvData + resStr[i];
+		  function replaceAll(str, orig, replacement) {
+			var temp = '';
+			for (var i = 0; i < str.length; i++) {
+				if (str[i] == orig)
+					temp += replacement;
+				else
+					temp += str[i];
+			}
+			return temp;
+		  }
+          for (var i = 0; i < res.length; i++) {
+          	for (var j = 0; j < res[i].length; j++)
+	          	if (res[i][j].type == 'Event')
+	          		csvData += '"' + replaceAll(res[i][j].label, '"', '""') + '",,' + res[i][j].total + ',' + res[i][j].ratio + '\n';
+	          	else if (res[i][j].type == 'Property')
+	          		csvData += ',"' + replaceAll(res[i][j].label, '"', '""') + '",' + res[i][j].total + ',' + res[i][j].ratio + '\n';
+          }
           if (!csvData.match(/^data:text\/csv/i))
             csvData = 'data:text/csv;charset=utf-8,' + csvData;
-          var fileName = 'spec_export.csv';
+          console.log(csvData);
+          var fileNameInput = document.getElementById('file-name').value;
+          var fileName = fileNameInput.substr(fileNameInput.length - 4, fileNameInput.length) == '.csv'? fileNameInput: fileNameInput + '.csv';
           var data = encodeURI(csvData);
           link = document.createElement('a');
           link.setAttribute('href', data);
@@ -92,66 +133,86 @@
     </script>
 
     <script id='jql-query'>
-       var defaultProperties = {"$city":true,"$region":true,"mp_country_code":true,"$brand":true,"$bluetooth_version":true,"$device":true,"$os":true,"$app_release":true,"$app_version":true,"$carrier":true,"$lib_version":true,"$wifi":true,"$screen_width":true,"$screen_height":true,"$model":true,"$os_version":true,"$manufacturer":true,"$screen_dpi":true,"$has_telephone":true,"has_nfc":true,"$bluetooth_enabled":true,"$browser":true,"$initial_referrer":true,"$initial_referring_domain":true,"$referrer":true,"$referring_domain":true,"$browser_version":true,"mp_keyword":true,"$search_engine":true,"utm_source":true,"utm_medium":true,"utm_campaign":true,"utm_content":true,"utm_term":true,"$radio":true,"mp_device_model":true,"$google_play_services":true,"mp_lib":true,"campaign_id":true,"message_id":true,"message_subtype":true,"message_type":true,"$answer_count":true,"survey_id":true,"collection_id":true,"$survey_shown":true,"$watch_model":true,"$ios_ifa":true,"$current_url":true,"$duration":true,"$from_binding":true,"$experiments":true,"$import":true,"distinct_id":true,"time":true,"$has_nfc":true, "$app_build_number":true, "$app_version_string":true};
-
-    var defaultPeopleProperties = {"$city":true,"$region":true,"$mp_country_code":true,"$timezone":true,"$browser_version":true,"$browser":true,"$initial_referrer":true,"$initial_referring_domain":true,"$os":true,"$last_seen":true,"$ios_app_release":true,"$ios_app_version":true,"$ios_device_model":true,"$ios_lib_version":true,"$ios_version":true,"$ios_ifa":true,"$android_app_version":true,"$android_app_version_code":true,"$android_lib_version":true,"$android_os":true,"$android_os_version":true,"$android_brand":true,"$android_model":true,"$android_manufacturer":true};
-    
-    var defaultEvents = {'$campaign_delivery':true, '$campaign_marked_spam':true, '$campaign_bounced':true, '$campaign_open':true, '$experiment_started':true, '$show_survey':true, "$campaign_received": true};
-    
-    var from_date = new Date(new Date().valueOf() - (params.numDays - 1)*24*60*60*1000).toISOString().slice(0,-14);
-    var to_date = new Date().toISOString().slice(0,-14);
-    function main() {
-      return Events({
-        from_date: from_date, 
-        to_date: to_date
-      })
-      .groupBy(['name'], (accums, items)=> {
-        var res = {Total: 0}
-        _.each(items, item => {
-          res.Total ++;
+function main() {
+  var numDays = params.numDays || 1;
+  var collections = params.collections || 'both'; //events, people, both
+  var includeDefaults = params.includeDefaults || false;
+  var from_date = new Date(new Date().valueOf() - (numDays -1)*24*60*60*1000).toISOString().slice(0,-14);
+  var to_date = new Date().toISOString().slice(0,-14);
+  var collection;
+  var events = Events({from_date: from_date, to_date: to_date});
+  if (collections == 'events')
+    collection = events;
+  else if (collections == 'people')
+    collection = People();
+  else if (collections == 'both')
+    collection = join(events, People());
+  var isDefault = str => !includeDefaults && (str.length > 2 && (str.substr(0,3) === 'mp_' || str[0] === '$'));
+  return collection
+  .groupByUser(function(state, items) {
+    state = state || {};
+    _.each(items, function(item) {
+      if (collections == 'events') {
+        if (!isDefault(item.name)) {
+          state[item.name] = state[item.name] || {};
+          state[item.name].Total = state[item.name].Total + 1 || 1;
           _.each(item.properties, function(val, prop) {
-            if (!defaultProperties[prop]){
-              res[prop] = res[prop] || 0;
-              res[prop]++;
-            }
+            if (!isDefault(prop))
+              state[item.name][prop] = state[item.name][prop] + 1 || 1;
           });
-        })
-        _.each(accums, acc => {
-          _.each(acc, (val, prop) =>{
-            res[prop] = res[prop] + val || val
-          })
-        })
-        return res
-      })
-      .filter(item => !defaultEvents[item.key])
-      .map(function(result) {
-        var res = [];
-          // these are rows not a single row
-        var propRows = [];
-        var total = result.value.Total;
-        _.each(result.value, function(count, prop) {
-          if (prop != 'Total') {
-            propRows.push({label: prop, total: count, ratio: count / total, type: 'Property'});
-          }
+        }
+      }
+      else if (collections == 'people') {
+        state['People Properties'] = state['People Properties'] || {};
+        state['People Properties'].Total = 1;
+        _.each(item.properties, function(val, prop) {
+          if (!isDefault(prop))
+            state['People Properties'][prop] = 1;
         });
-        propRows = _.sortBy(propRows, function(cell) {return -1 * cell.total});
-        var eventRow = {label: result.key[0], total: result.value.Total, ratio: result.value.Total / total, type: 'Event'};
-        res.push(eventRow);
-        res.push(propRows);
-        res = _.flatten(res);
-        return res;
-      })
-      .map(function(res) {
-        var result = '';
-        _.each(res, function(obj) {
-          if (obj.type == 'Event')
-            result += obj.label + ',,' + obj.total + ',' + (100 * obj.ratio) + '~';
-          else if (obj.type == 'Property')
-            result += ',' + obj.label + ',' + obj.total + ',' + (100 * obj.ratio) + '~';
-        });
-        return result;
+      }
+      else if (collections == 'both') {
+        if (item.event && !isDefault(item.event.name)) {
+          state[item.event.name] = state[item.event.name] || {};
+          state[item.event.name].Total = state[item.event.name].Total + 1 || 1;
+          _.each(item.event.properties, function(val, prop) {
+            if (!isDefault(prop))
+              state[item.event.name][prop] = state[item.event.name][prop] + 1 || 1;
+          });
+        }
+        if (item.user) {
+          state['People Properties'] = state['People Properties'] || {};
+          state['People Properties'].Total = 1;
+          _.each(item.user.properties, function(val, prop) {
+            if (!isDefault(prop))
+              state['People Properties'][prop] = 1;
+          });
+        }
+      }
+    });
+    return state;
+  })
+  .map(state => state.value)
+  .reduce(mixpanel.reducer.object_merge())
+  .map(function(result) {
+    var res = [];
+    _.each(result, function(summary_obj, event) {
+      var row = [];
+      var total = summary_obj.Total;
+      _.each(summary_obj, function(count, prop) {
+        if (prop != 'Total')
+          row.push({label: prop, total: count, ratio: Math.round(10000 * count / total) / 100, type: 'Property'});
       });
-    }
+      row = _.sortBy(row, function(cell) {return -1 * cell.total});
+      row.unshift({label: event, total: summary_obj.Total, ratio: Math.round(10000 * summary_obj.Total / total) / 100, type: 'Event'});
+      res.push(row);
+    });
+    return _.sortBy(res, function(event_list) {
+      if (event_list[0].label == 'People Properties')
+        return 0;
+      return -1 * event_list[0].total;
+    });
+  });
+}
     </script>
   </body>
 </html>
